@@ -1,31 +1,5 @@
-interface Song {
-  url: string;
-  duration: number;
-}
-
-const stations: Record<string, { name: string; songs: Song[] }> = {
-  '88': {
-    name: 'Lofi Beats',
-    songs: [
-      {
-        url: '/songs/lofi/lofi-1.mp3',
-        duration: 120,
-      },
-      {
-        url: '/songs/lofi/lofi-2.mp3',
-        duration: 120,
-      },
-      {
-        url: '/songs/lofi/lofi-3.mp3',
-        duration: 120,
-      },
-      {
-        url: '/songs/lofi/lofi-4.mp3',
-        duration: 120,
-      },
-    ],
-  },
-};
+import { stations } from '@/data';
+import { Song } from '@/data';
 
 function getCurrentSongForStation(
   station: { name: string; songs: Song[] },
