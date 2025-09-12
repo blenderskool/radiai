@@ -1,20 +1,97 @@
-import useRadio from '@/hooks/useRadio';
-import useRadioControlsStore from '@/hooks/useRadioControls';
-import { mapRange } from '@/utils/number';
 import { useCursor, useGLTF } from '@react-three/drei';
-import { ObjectMap, useThree } from '@react-three/fiber';
+import { useThree } from '@react-three/fiber';
 import { animate } from 'motion';
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GLTF, OrbitControls } from 'three-stdlib';
 import { clamp } from 'three/src/math/MathUtils.js';
 import useSound from 'use-sound';
 
+import useRadio from '@/hooks/useRadio';
+import useRadioControlsStore from '@/hooks/useRadioControls';
+import { mapRange } from '@/utils/number';
+
+type GLTFResult = GLTF & {
+  nodes: {
+    Radio_Box: THREE.Mesh;
+    Radio_Box_Frame: THREE.Mesh;
+    Speaker_Padding: THREE.Mesh;
+    Controls_Padding: THREE.Mesh;
+    Bottom_Padding: THREE.Mesh;
+    Speaker_Grill: THREE.Mesh;
+    Speaker_Backplate: THREE.Mesh;
+    Tuner_Backplate: THREE.Mesh;
+    Tuner_Marker: THREE.Mesh;
+    Tuner_Marking_Lines: THREE.Mesh;
+    Tuner_Button_Markings: THREE.Mesh;
+    Antenna: THREE.Mesh;
+    Antenna_Holder: THREE.Mesh;
+    Knob_1_Marking: THREE.Mesh;
+    Knob_1_Ring: THREE.Mesh;
+    Knob_2: THREE.Mesh;
+    Knob_2_Indicator: THREE.Mesh;
+    Knob_2_Front: THREE.Mesh;
+    Knob_2_Marking: THREE.Mesh;
+    Knob_2_Ring: THREE.Mesh;
+    Knob_3: THREE.Mesh;
+    Knob_3_Indicator: THREE.Mesh;
+    Knob_3_Front: THREE.Mesh;
+    Knob_3_Marking: THREE.Mesh;
+    Knob_3_Ring: THREE.Mesh;
+    Knob_4_Ring: THREE.Mesh;
+    Knob_5_Ring: THREE.Mesh;
+    Leg_1: THREE.Mesh;
+    Leg_2: THREE.Mesh;
+    Tuner_Markings_Text: THREE.Mesh;
+    Tuner_Button_1: THREE.Mesh;
+    Tuner_Button_2: THREE.Mesh;
+    Tuner_Button_3: THREE.Mesh;
+    Tuner_Button_4: THREE.Mesh;
+    Tuner_Button_5: THREE.Mesh;
+    Tuner_Button_6: THREE.Mesh;
+    Tuner_Button_7: THREE.Mesh;
+    Text001: THREE.Mesh;
+    Text: THREE.Mesh;
+    Text002: THREE.Mesh;
+    Text003: THREE.Mesh;
+    Text004: THREE.Mesh;
+    Text005: THREE.Mesh;
+    Text006: THREE.Mesh;
+    Controls_Backplate: THREE.Mesh;
+    Rim: THREE.Mesh;
+    Knob_1: THREE.Mesh;
+    Knob_1_Indicator: THREE.Mesh;
+    Knob_1_Front: THREE.Mesh;
+    Knob_4: THREE.Mesh;
+    Knob_4_Front: THREE.Mesh;
+    Knob_5: THREE.Mesh;
+    Knob_5_Front: THREE.Mesh;
+    On_Off: THREE.Mesh;
+    Text007: THREE.Mesh;
+    Text009: THREE.Mesh;
+  };
+  materials: {
+    Wood: THREE.MeshStandardMaterial;
+    Cream: THREE.MeshStandardMaterial;
+    Frame: THREE.MeshStandardMaterial;
+    ['Wood.001']: THREE.MeshStandardMaterial;
+    Material: THREE.MeshStandardMaterial;
+    ['Material.001']: THREE.MeshStandardMaterial;
+    ['Material.002']: THREE.MeshStandardMaterial;
+    ['Material.003']: THREE.MeshStandardMaterial;
+    Metal: THREE.MeshStandardMaterial;
+    ['Cream.001']: THREE.MeshStandardMaterial;
+    Anisotropy: THREE.MeshPhysicalMaterial;
+    ['Wood.002']: THREE.MeshStandardMaterial;
+    ['Material.004']: THREE.MeshStandardMaterial;
+  };
+};
+
 function OnOffButton({
   gltf,
   onClick,
 }: {
-  gltf: GLTF & ObjectMap;
+  gltf: GLTFResult;
   onClick: (play: boolean) => void;
 }) {
   const isOn = useRadioControlsStore((state) => state.isOn);
@@ -161,7 +238,7 @@ function TunerMarker({
   );
 }
 
-const Antena = ({ gltf }: { gltf: GLTF & ObjectMap }) => {
+const Antena = ({ gltf }: { gltf: GLTFResult }) => {
   const controls = useThree((state) => state.controls as OrbitControls);
   const mesh = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
@@ -192,12 +269,12 @@ const Antena = ({ gltf }: { gltf: GLTF & ObjectMap }) => {
         onPointerOut={() => setHovered(false)}
         onPointerDown={(e) => {
           e.stopPropagation();
-          e.target?.setPointerCapture(e.pointerId);
+          (e.target as any)?.setPointerCapture(e.pointerId);
           controls.enabled = false;
         }}
         onPointerMove={(e) => {
           if (!mesh.current) return;
-          if (!e.target?.hasPointerCapture(e.pointerId)) return;
+          if (!(e.target as any)?.hasPointerCapture(e.pointerId)) return;
 
           const newRotation = clamp(
             mesh.current.rotation.z - e.movementY * 0.005,
@@ -217,7 +294,7 @@ const Antena = ({ gltf }: { gltf: GLTF & ObjectMap }) => {
         }}
         onPointerUp={(e) => {
           e.stopPropagation();
-          e.target?.releasePointerCapture(e.pointerId);
+          (e.target as any)?.releasePointerCapture(e.pointerId);
           controls.enabled = true;
         }}
       />
@@ -256,12 +333,12 @@ const Knob = ({
       onPointerOut={() => setHovered(false)}
       onPointerDown={(e) => {
         e.stopPropagation();
-        e.target?.setPointerCapture(e.pointerId);
+        (e.target as any)?.setPointerCapture(e.pointerId);
         controls.enabled = false;
       }}
       onPointerMove={(e) => {
         if (!mesh.current) return;
-        if (!e.target?.hasPointerCapture(e.pointerId)) return;
+        if (!(e.target as any)?.hasPointerCapture(e.pointerId)) return;
 
         const dist = e.movementX;
         const delta = Math.round(dist * 0.01 * 50) / 50;
@@ -269,7 +346,7 @@ const Knob = ({
       }}
       onPointerUp={(e) => {
         e.stopPropagation();
-        e.target?.releasePointerCapture(e.pointerId);
+        (e.target as any)?.releasePointerCapture(e.pointerId);
         controls.enabled = true;
       }}
     >
@@ -287,9 +364,9 @@ export function Radio(props: any) {
   // Use the radio hook for live audio functionality
   const radio = useRadio();
 
-  // Apply volume to the audio element
-  const gltf = useGLTF('/radio-1.glb');
+  const gltf = useGLTF('/radio-1.glb') as unknown as GLTFResult;
   const { nodes, materials } = gltf;
+
   return (
     <group {...props} dispose={null}>
       <mesh
