@@ -39,9 +39,13 @@ export const useAudioProcessing = (
   const tuningOscillatorRef = useRef<OscillatorNode | null>(null);
   const tuningGainRef = useRef<GainNode | null>(null);
   const signalModulatorRef = useRef<GainNode | null>(null);
-  const noiseGeneratorRef = useRef<ScriptProcessorNode | null>(null);
+  const noiseWorkletRef = useRef<AudioWorkletNode | null>(null);
 
   const mergedConfig = { ...defaultConfig, ...config };
+
+  // Refs for dynamic parameter updates
+  const noiseLevelRef = useRef<number>(mergedConfig.noise);
+  const signalModulationRef = useRef<number>(mergedConfig.signalModulation);
 
   // Create realistic radio distortion curve
   const createDistortionCurve = useCallback((amount: number) => {
@@ -63,54 +67,21 @@ export const useAudioProcessing = (
     return curve;
   }, []);
 
-  // Create realistic radio noise generator
-  const createRadioNoiseProcessor = useCallback(
-    (audioContext: AudioContext, config: AudioProcessingConfig) => {
-      const bufferSize = 4096;
-      const processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
+  // Create noise worklet processor
+  const createNoiseWorklet = useCallback(async (audioContext: AudioContext) => {
+    try {
+      // Load the worklet module
+      await audioContext.audioWorklet.addModule('/noise-processor.worklet.js');
 
-      processor.onaudioprocess = (event) => {
-        const inputBuffer = event.inputBuffer;
-        const outputBuffer = event.outputBuffer;
-        const inputData = inputBuffer.getChannelData(0);
-        const outputData = outputBuffer.getChannelData(0);
+      // Create the worklet node
+      const workletNode = new AudioWorkletNode(audioContext, 'noise-processor');
 
-        // Analyze input signal strength for modulation
-        let signalStrength = 0;
-        for (let i = 0; i < inputData.length; i++) {
-          signalStrength += Math.abs(inputData[i]);
-        }
-        signalStrength /= inputData.length;
-
-        for (let i = 0; i < inputData.length; i++) {
-          // Generate noise that modulates with signal strength
-          const baseNoise = (Math.random() * 2 - 1) * config.noise;
-          const signalModulatedNoise =
-            baseNoise * (1 + signalStrength * config.signalModulation);
-
-          // Add frequency-dependent noise (more noise in mid frequencies)
-          const freqNoise = Math.sin(i * 0.01) * config.noise * 0.5;
-
-          // Add crackling noise for more realistic radio static
-          const crackle =
-            Math.random() < 0.05
-              ? (Math.random() * 2 - 1) * config.noise * 2
-              : 0;
-
-          // Apply distortion to the noise itself for more character
-          const distortedNoise = Math.tanh(
-            (signalModulatedNoise + freqNoise + crackle) * 1.5
-          );
-
-          // Combine original signal with distorted noise
-          outputData[i] = inputData[i] + distortedNoise;
-        }
-      };
-
-      return processor;
-    },
-    []
-  );
+      return workletNode;
+    } catch (error) {
+      console.error('Failed to create noise worklet:', error);
+      return null;
+    }
+  }, []);
 
   // Create tuning drift oscillator for realistic radio effects
   const createTuningDrift = useCallback(
@@ -202,12 +173,20 @@ export const useAudioProcessing = (
       signalAnalyzer.fftSize = 256;
       signalAnalyzerRef.current = signalAnalyzer;
 
-      // Create realistic radio noise processor
-      const noiseProcessor = createRadioNoiseProcessor(
-        audioContext,
-        mergedConfig
-      );
-      noiseGeneratorRef.current = noiseProcessor;
+      // Create realistic radio noise processor using worklet
+      const noiseProcessor = await createNoiseWorklet(audioContext);
+      if (noiseProcessor) {
+        noiseWorkletRef.current = noiseProcessor;
+        // Initialize worklet with current config values
+        noiseProcessor.port.postMessage({
+          type: 'updateNoise',
+          value: mergedConfig.noise,
+        });
+        noiseProcessor.port.postMessage({
+          type: 'updateSignalModulation',
+          value: mergedConfig.signalModulation,
+        });
+      }
 
       // Create distortion node with realistic radio curve
       const distortionNode = audioContext.createWaveShaper();
@@ -246,11 +225,16 @@ export const useAudioProcessing = (
       reverbGain.gain.value = mergedConfig.reverb * 0.15; // More subtle
 
       // Connect realistic radio audio graph
-      sourceNode
-        .connect(inputGain)
-        .connect(signalAnalyzer) // Analyze signal for modulation
-        .connect(noiseProcessor) // Apply realistic noise processing
-        .connect(distortionNode) // Apply radio distortion
+      sourceNode.connect(inputGain).connect(signalAnalyzer); // Analyze signal for modulation
+
+      if (noiseProcessor) {
+        signalAnalyzer.connect(noiseProcessor); // Apply realistic noise processing
+        noiseProcessor.connect(distortionNode); // Apply radio distortion
+      } else {
+        signalAnalyzer.connect(distortionNode); // Skip noise processing if worklet failed
+      }
+
+      distortionNode
         .connect(highpassFilter) // Remove low frequencies
         .connect(lowpassFilter) // Limit high frequencies
         .connect(outputGain);
@@ -271,7 +255,7 @@ export const useAudioProcessing = (
     [
       mergedConfig,
       createDistortionCurve,
-      createRadioNoiseProcessor,
+      createNoiseWorklet,
       createTuningDrift,
       createReverbImpulse,
     ]
@@ -287,9 +271,13 @@ export const useAudioProcessing = (
   );
 
   const updateNoise = useCallback((amount: number) => {
-    // Noise is now handled by the script processor, so we need to recreate it
-    // This is a limitation of the Web Audio API - we can't easily update script processors
-    console.log('Noise level updated to:', amount);
+    noiseLevelRef.current = amount;
+    if (noiseWorkletRef.current) {
+      noiseWorkletRef.current.port.postMessage({
+        type: 'updateNoise',
+        value: amount,
+      });
+    }
   }, []);
 
   const updateLowpass = useCallback((amount: number) => {
@@ -319,9 +307,13 @@ export const useAudioProcessing = (
   }, []);
 
   const updateSignalModulation = useCallback((amount: number) => {
-    // Signal modulation is handled by the script processor
-    // This would require recreating the processor to update
-    console.log('Signal modulation updated to:', amount);
+    signalModulationRef.current = amount;
+    if (noiseWorkletRef.current) {
+      noiseWorkletRef.current.port.postMessage({
+        type: 'updateSignalModulation',
+        value: amount,
+      });
+    }
   }, []);
 
   const updateVolume = useCallback((volume: number) => {
@@ -336,9 +328,9 @@ export const useAudioProcessing = (
       tuningOscillatorRef.current = null;
     }
 
-    if (noiseGeneratorRef.current) {
-      noiseGeneratorRef.current.disconnect();
-      noiseGeneratorRef.current = null;
+    if (noiseWorkletRef.current) {
+      noiseWorkletRef.current.disconnect();
+      noiseWorkletRef.current = null;
     }
 
     if (audioContextRef.current) {
@@ -382,14 +374,6 @@ export const useAudioProcessing = (
 
   return {
     initializeAudioContext,
-    updateDistortion,
-    updateNoise,
-    updateLowpass,
-    updateHighpass,
-    updateReverb,
-    updateTuningDrift,
-    updateSignalModulation,
-    updateVolume,
     cleanup,
   };
 };

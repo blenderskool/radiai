@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { clamp } from 'three/src/math/MathUtils.js';
 import useRadioControlsStore from './useRadioControls';
 import useAudioProcessing from './useAudioProcessing';
+import { mapRange } from '@/utils/number';
 
 // Find and set the current song from live data
 
@@ -12,6 +13,18 @@ const fetchLiveData = async (): Promise<any> => {
   }
   const data = await response.json();
   return data;
+};
+
+const getAudioProcessingConfig = (channelOffset: number) => {
+  return {
+    distortion: mapRange(channelOffset, [0, 1], [0, 0.8]), // 0-1, higher = more distortion (0.2 = subtle, 0.6 = heavy)
+    noise: mapRange(channelOffset, [0.5, 3], [0, 0.015]), // 0-1, higher = more static noise (0.1 = clean, 0.4 = very noisy)
+    lowpass: 0.3, // 0-1, lower = more muffled sound (0.3 = very muffled, 0.8 = clear)
+    highpass: 0.1, // 0-1, higher = removes more bass (0.05 = full bass, 0.3 = thin)
+    reverb: 0.1, // 0-1, higher = more echo/reverb (0.1 = dry, 0.5 = very echoey)
+    tuningDrift: 0.6, // 0-1, higher = more frequency drift (0.05 = stable, 0.3 = wobbly)
+    signalModulation: 0.8, // 0-1, higher = noise modulates more with signal (0.1 = constant, 0.5 = very dynamic)
+  };
 };
 
 const findNearestSong = (data: Record<string, any>, channel: number) => {
@@ -44,7 +57,6 @@ const findNearestSong = (data: Record<string, any>, channel: number) => {
 
 const useRadio = () => {
   const channel = useRadioControlsStore((state) => state.channel);
-  const volume = useRadioControlsStore((state) => state.volume);
 
   const [liveData, setLiveData] = useState<any>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -52,32 +64,17 @@ const useRadio = () => {
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const currentSongDataRef = useRef<any>(null);
+  const [channelOffset, setChannelOffset] = useState(0);
 
-  // Audio processing configuration - adjust these values to control radio effects
-  // You can modify these values to achieve different radio sound characteristics
-  // To make distortion dynamic, you could use: distortion: useRadioControlsStore((state) => state.distortion)
-  const audioProcessingConfig = {
-    distortion: 1, // 0-1, higher = more distortion (0.2 = subtle, 0.6 = heavy)
-    noise: 0.001, // 0-1, higher = more static noise (0.1 = clean, 0.4 = very noisy)
-    lowpass: 0.3, // 0-1, lower = more muffled sound (0.3 = very muffled, 0.8 = clear)
-    highpass: 0.1, // 0-1, higher = removes more bass (0.05 = full bass, 0.3 = thin)
-    reverb: 0.1, // 0-1, higher = more echo/reverb (0.1 = dry, 0.5 = very echoey)
-    tuningDrift: 0.6, // 0-1, higher = more frequency drift (0.05 = stable, 0.3 = wobbly)
-    signalModulation: 0.8, // 0-1, higher = noise modulates more with signal (0.1 = constant, 0.5 = very dynamic)
-  };
+  const volume = useRadioControlsStore((state) => state.volume);
+  const offsetVolume = clamp(
+    mapRange(channelOffset, [0, 2], [volume, 0], false),
+    0,
+    volume
+  );
+  const audioProcessingConfig = getAudioProcessingConfig(channelOffset);
 
-  const {
-    initializeAudioContext,
-    updateDistortion,
-    updateNoise,
-    updateLowpass,
-    updateHighpass,
-    updateReverb,
-    updateTuningDrift,
-    updateSignalModulation,
-    updateVolume,
-    cleanup,
-  } = useAudioProcessing(audioProcessingConfig);
+  const { initializeAudioContext } = useAudioProcessing(audioProcessingConfig);
 
   const play = async () => {
     await audioRef?.play();
@@ -85,10 +82,13 @@ const useRadio = () => {
     setIsPlaying(true);
   };
 
-  const getSong = async () => {
+  const getSong = async (shouldFetch: boolean = false) => {
     try {
-      const data = await fetchLiveData();
-      setLiveData(data);
+      let data = liveData;
+      if (!data || shouldFetch) {
+        data = await fetchLiveData();
+        setLiveData(data);
+      }
       return findNearestSong(data, channel);
     } catch (error) {
       console.error('Error fetching live data:', error);
@@ -143,9 +143,10 @@ const useRadio = () => {
   };
 
   // Fetch next song when current song finishes
-  const fetchNextSong = async () => {
-    const [nextSong, channelOffset] = (await getSong()) ?? [];
-    if (nextSong) {
+  const playNextSong = async (shouldFetch: boolean = false) => {
+    const [nextSong, channelOffset] = (await getSong(shouldFetch)) ?? [];
+    setChannelOffset(channelOffset ?? 0);
+    if (nextSong && nextSong.url !== currentSongDataRef.current?.url) {
       playCurrentSong(nextSong); // Auto-play next song since user already started
     }
   };
@@ -173,7 +174,7 @@ const useRadio = () => {
     const onEnded = () => {
       setIsPlaying(false);
       // Fetch next song when current song ends
-      fetchNextSong();
+      playNextSong(true);
     };
 
     const onError = (e: any) => {
@@ -190,24 +191,18 @@ const useRadio = () => {
       audioRef.removeEventListener('ended', onEnded);
       audioRef.removeEventListener('error', onError);
     };
-  }, [audioRef, fetchNextSong, setIsPlaying]);
+  }, [audioRef, playNextSong, setIsPlaying]);
 
   // Initialize radio when channel changes
   useEffect(() => {
-    fetchNextSong();
+    playNextSong();
   }, [channel]);
 
   useEffect(() => {
     if (audioRef) {
-      // Try to use audio processing for volume control, fall back to native volume
-      try {
-        updateVolume(volume);
-      } catch (error) {
-        // Fall back to native volume control if audio processing is not available
-        audioRef.volume = volume;
-      }
+      audioRef.volume = offsetVolume;
     }
-  }, [volume, audioRef, updateVolume]);
+  }, [offsetVolume, audioRef]);
 
   return {
     liveData,

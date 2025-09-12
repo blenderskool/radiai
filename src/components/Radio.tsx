@@ -1,5 +1,6 @@
 import useRadio from '@/hooks/useRadio';
 import useRadioControlsStore from '@/hooks/useRadioControls';
+import { mapRange } from '@/utils/number';
 import { useCursor, useGLTF } from '@react-three/drei';
 import { ObjectMap, useThree } from '@react-three/fiber';
 import { animate } from 'motion';
@@ -69,14 +70,6 @@ function TunerButton({
   );
 }
 
-const mapRange = (
-  value: number,
-  [fromMin, fromMax]: [number, number],
-  [toMin, toMax]: [number, number]
-) => {
-  return toMin + ((value - fromMin) * (toMax - toMin)) / (fromMax - fromMin);
-};
-
 function TunerMarker({
   geometry,
   material,
@@ -120,7 +113,7 @@ const Antena = ({ gltf }: { gltf: GLTF & ObjectMap }) => {
 
   const [isSoundPlaying, setIsSoundPlaying] = useState(false);
   const [antennaHinge] = useSound('/sfx/antenna-hinge.mp3', {
-    volume: 0.1,
+    volume: 0.4,
     onplay: () => setIsSoundPlaying(true),
     onend: () => setIsSoundPlaying(false),
   });
