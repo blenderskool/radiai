@@ -847,6 +847,15 @@ export function Radio(props: any) {
         rotation={[Math.PI / 2, 0, 0]}
         scale={0.039}
       />
+      <mesh
+        castShadow
+        receiveShadow
+        geometry={nodes.Rim.geometry}
+        material={materials['Material.004']}
+        position={[-0.004, 0.938, 0.268]}
+        rotation={[0, 0, -Math.PI]}
+        scale={[-1, -1, -0.046]}
+      />
 
       <OnOffButton
         gltf={gltf}
