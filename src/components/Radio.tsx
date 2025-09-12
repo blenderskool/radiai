@@ -1,4 +1,4 @@
-import { useCursor, useGLTF } from '@react-three/drei';
+import { Html, useCursor, useGLTF } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
 import { animate } from 'motion';
 import React, { useEffect, useRef, useState } from 'react';
@@ -858,6 +858,16 @@ export function Radio(props: any) {
           }
         }}
       />
+
+      <Html rotation={[-Math.PI / 3, 0, 0]} position={[0, 0, 0.75]} transform>
+        <div
+          className={`text-[2px] text-white/30 transition-opacity duration-300 select-none ${
+            radio.hasUserInteracted ? 'opacity-0' : 'opacity-100'
+          }`}
+        >
+          Try clicking on the buttons and knobs to interact with the radio
+        </div>
+      </Html>
     </group>
   );
 }
