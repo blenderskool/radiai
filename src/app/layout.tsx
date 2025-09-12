@@ -18,6 +18,13 @@ export const metadata: Metadata = {
       url: '/icons/favicon-32x32.png',
     },
   ],
+  openGraph: {
+    images: [
+      {
+        url: 'https://radiai.appwrite.network/site-preview.jpg',
+      },
+    ],
+  },
 };
 
 export const viewport: Viewport = {
