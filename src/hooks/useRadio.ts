@@ -1,8 +1,9 @@
+import { mapRange } from '@/utils/number';
 import { useEffect, useRef, useState } from 'react';
 import { clamp } from 'three/src/math/MathUtils.js';
-import useRadioControlsStore from './useRadioControls';
+
 import useAudioProcessing from './useAudioProcessing';
-import { mapRange } from '@/utils/number';
+import useRadioControlsStore from './useRadioControls';
 
 // Find and set the current song from live data
 
@@ -55,6 +56,13 @@ const findNearestSong = (data: Record<string, any>, channel: number) => {
   return [song, channelOffset] as const;
 };
 
+// Calculate time offset between API and client
+const calculateTimeOffset = (apiTimestamp: string) => {
+  const apiTime = new Date(apiTimestamp).getTime();
+  const clientTime = Date.now();
+  return clientTime - apiTime;
+};
+
 const useRadio = () => {
   const overallVolume = useRadioControlsStore((state) => state.volume);
   const channel = useRadioControlsStore((state) => state.channel);
@@ -101,13 +109,6 @@ const useRadio = () => {
     }
   };
 
-  // Calculate time offset between API and client
-  const calculateTimeOffset = (apiTimestamp: string) => {
-    const apiTime = new Date(apiTimestamp).getTime();
-    const clientTime = Date.now();
-    return clientTime - apiTime;
-  };
-
   // Start playing the current song at the correct position
   const playCurrentSong = async (song: any) => {
     if (!song || !song.url) {
@@ -142,16 +143,21 @@ const useRadio = () => {
 
     // Set the source and load
     audio.pause();
-    console.log('Setting source to:', song.url);
     audio.src = song.url;
     audio.load();
   };
 
   // Fetch next song when current song finishes
-  const playNextSong = async (shouldFetch: boolean = false) => {
+  const playNextSong = async (
+    shouldFetch: boolean = false,
+    forcePlay: boolean = false
+  ) => {
     const [nextSong, channelOffset] = (await getSong(shouldFetch)) ?? [];
     setChannelOffset(channelOffset ?? 0);
-    if (nextSong && nextSong.url !== currentSongDataRef.current?.url) {
+    if (
+      nextSong &&
+      (nextSong.url !== currentSongDataRef.current?.url || forcePlay)
+    ) {
       playCurrentSong(nextSong); // Auto-play next song since user already started
     }
   };
@@ -173,7 +179,11 @@ const useRadio = () => {
 
       audioRef.currentTime = seekTime;
 
-      await play();
+      try {
+        await play();
+      } catch {
+        // Failed due to autoplay policy
+      }
     };
 
     const onEnded = () => {
@@ -221,6 +231,7 @@ const useRadio = () => {
       setHasUserInteracted(true);
       if (audioRef && !isPlaying && audioRef.src) {
         try {
+          await playNextSong(false, true);
           await play();
         } catch (error) {
           console.error('Failed to play audio:', error);
