@@ -1,52 +1,99 @@
 import { useEffect, useRef, useState } from 'react';
 import { clamp } from 'three/src/math/MathUtils.js';
 import useRadioControlsStore from './useRadioControls';
+import useAudioProcessing from './useAudioProcessing';
+
+// Find and set the current song from live data
+
+const fetchLiveData = async (): Promise<any> => {
+  const response = await fetch(`/api/live`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch live data');
+  }
+  const data = await response.json();
+  return data;
+};
+
+const findNearestSong = (data: Record<string, any>, channel: number) => {
+  let station = data[channel.toString()];
+  let channelOffset = 0;
+
+  if (!station) {
+    const stations = Object.keys(data).map((station) => Number(station));
+    // Find closest station from channel
+    const closestStation = stations.reduce((closest: any, station: any) => {
+      return Math.abs(station - channel) < Math.abs(closest - channel)
+        ? station
+        : closest;
+    }, stations[0]);
+    channelOffset = Math.abs(closestStation - channel);
+    station = data[closestStation.toString()];
+  }
+
+  const song = {
+    url: station.song.url,
+    duration: station.totalDuration,
+    currentPart: station.part,
+    remainingTime: station.remainingTime,
+    station: station.station,
+    timestamp: station.timestamp,
+  };
+
+  return [song, channelOffset] as const;
+};
 
 const useRadio = () => {
   const channel = useRadioControlsStore((state) => state.channel);
   const volume = useRadioControlsStore((state) => state.volume);
 
   const [liveData, setLiveData] = useState<any>(null);
-  const [currentSong, setCurrentSong] = useState<any>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioRef, setAudioRef] = useState<HTMLAudioElement | null>(null);
+  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const currentSongDataRef = useRef<any>(null);
 
-  // Fetch live data from API
-  const fetchLiveData = async () => {
+  // Audio processing configuration - adjust these values to control radio effects
+  // You can modify these values to achieve different radio sound characteristics
+  // To make distortion dynamic, you could use: distortion: useRadioControlsStore((state) => state.distortion)
+  const audioProcessingConfig = {
+    distortion: 1, // 0-1, higher = more distortion (0.2 = subtle, 0.6 = heavy)
+    noise: 0.001, // 0-1, higher = more static noise (0.1 = clean, 0.4 = very noisy)
+    lowpass: 0.3, // 0-1, lower = more muffled sound (0.3 = very muffled, 0.8 = clear)
+    highpass: 0.1, // 0-1, higher = removes more bass (0.05 = full bass, 0.3 = thin)
+    reverb: 0.1, // 0-1, higher = more echo/reverb (0.1 = dry, 0.5 = very echoey)
+    tuningDrift: 0.6, // 0-1, higher = more frequency drift (0.05 = stable, 0.3 = wobbly)
+    signalModulation: 0.8, // 0-1, higher = noise modulates more with signal (0.1 = constant, 0.5 = very dynamic)
+  };
+
+  const {
+    initializeAudioContext,
+    updateDistortion,
+    updateNoise,
+    updateLowpass,
+    updateHighpass,
+    updateReverb,
+    updateTuningDrift,
+    updateSignalModulation,
+    updateVolume,
+    cleanup,
+  } = useAudioProcessing(audioProcessingConfig);
+
+  const play = async () => {
+    await audioRef?.play();
+    await audioContext?.resume();
+    setIsPlaying(true);
+  };
+
+  const getSong = async () => {
     try {
-      const response = await fetch(`/api/live?station=${channel}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch live data');
-      }
-      const data = await response.json();
+      const data = await fetchLiveData();
       setLiveData(data);
-      return data;
+      return findNearestSong(data, channel);
     } catch (error) {
       console.error('Error fetching live data:', error);
       return null;
     }
-  };
-
-  // Find and set the current song from live data
-  const findCurrentSong = (data: any) => {
-    if (!data || !data.song || !data.song.url) {
-      console.log('Invalid song data:', data);
-      return null;
-    }
-
-    const song = {
-      url: data.song.url,
-      duration: data.totalDuration,
-      currentPart: data.part,
-      remainingTime: data.remainingTime,
-      station: data.station,
-      timestamp: data.timestamp,
-    };
-
-    setCurrentSong(song);
-    return song;
   };
 
   // Calculate time offset between API and client
@@ -66,29 +113,46 @@ const useRadio = () => {
     // Store current song data for use in event listeners
     currentSongDataRef.current = song;
 
-    // If we don't have an audio element yet, create one
-    const audio = audioRef || new Audio();
+    // Always create a new audio element to avoid MediaElementSourceNode conflicts
+    // Once an audio element is connected to a MediaElementSourceNode, it can never be reused
+    let audio = audioRef;
+    if (!audio) {
+      audio = new Audio();
+      // Initialize audio processing
+      try {
+        const audioContext = await initializeAudioContext(audio);
+        setAudioContext(audioContext);
+        if (!audioContext) {
+          console.warn(
+            'Audio processing could not be initialized - audio element already connected'
+          );
+          // Fall back to regular audio playback without processing
+        }
+      } catch (error) {
+        console.error('Failed to initialize audio processing:', error);
+        // Fall back to regular audio playback without processing
+      }
+    }
     setAudioRef(audio);
-    // Pause current audio and change source
+
+    // Set the source and load
     audio.pause();
+    console.log('Setting source to:', song.url);
     audio.src = song.url;
     audio.load();
   };
 
   // Fetch next song when current song finishes
   const fetchNextSong = async () => {
-    const data = await fetchLiveData();
-    if (data) {
-      const nextSong = findCurrentSong(data);
-      if (nextSong) {
-        playCurrentSong(nextSong); // Auto-play next song since user already started
-      }
+    const [nextSong, channelOffset] = (await getSong()) ?? [];
+    if (nextSong) {
+      playCurrentSong(nextSong); // Auto-play next song since user already started
     }
   };
 
   useEffect(() => {
     if (!audioRef) return;
-    const onLoadedMetadata = () => {
+    const onLoadedMetadata = async () => {
       // Use the stored song data
       const songData = currentSongDataRef.current;
       if (!songData) return;
@@ -103,9 +167,7 @@ const useRadio = () => {
 
       audioRef.currentTime = seekTime;
 
-      audioRef.play().then(() => {
-        setIsPlaying(true);
-      });
+      await play();
     };
 
     const onEnded = () => {
@@ -132,52 +194,35 @@ const useRadio = () => {
 
   // Initialize radio when channel changes
   useEffect(() => {
-    const initializeRadio = async () => {
-      const data = await fetchLiveData();
-      if (data) {
-        const song = findCurrentSong(data);
-        if (song) {
-          playCurrentSong(song);
-        }
-      }
-    };
-
-    initializeRadio();
-
-    // Cleanup on unmount or channel change
-    return () => {
-      if (audioRef) {
-        audioRef.pause();
-        audioRef.src = '';
-      }
-    };
+    fetchNextSong();
   }, [channel]);
 
   useEffect(() => {
     if (audioRef) {
-      audioRef.volume = volume;
+      // Try to use audio processing for volume control, fall back to native volume
+      try {
+        updateVolume(volume);
+      } catch (error) {
+        // Fall back to native volume control if audio processing is not available
+        audioRef.volume = volume;
+      }
     }
-  }, [volume, audioRef]);
+  }, [volume, audioRef, updateVolume]);
 
   return {
     liveData,
-    currentSong,
     isPlaying,
     audioRef,
     hasUserInteracted,
-    fetchLiveData,
     playCurrentSong,
-    play: () => {
+    play: async () => {
       setHasUserInteracted(true);
       if (audioRef && !isPlaying && audioRef.src) {
-        audioRef
-          .play()
-          .then(() => {
-            setIsPlaying(true);
-          })
-          .catch((error) => {
-            console.error('Playback failed:', error);
-          });
+        try {
+          await play();
+        } catch (error) {
+          console.error('Failed to play audio:', error);
+        }
       } else if (!audioRef || !audioRef.src) {
         console.log('Audio not ready or no source available');
       }
