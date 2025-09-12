@@ -21,7 +21,8 @@ const defaultConfig: AudioProcessingConfig = {
 };
 
 export const useAudioProcessing = (
-  config: Partial<AudioProcessingConfig> = {}
+  config: Partial<AudioProcessingConfig> = {},
+  overallVolume: number = 1.0
 ) => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
@@ -165,6 +166,7 @@ export const useAudioProcessing = (
       // Create gain nodes
       const inputGain = audioContext.createGain();
       const outputGain = audioContext.createGain();
+      outputGain.gain.value = overallVolume; // Apply overall volume to final output
       gainNodeRef.current = inputGain;
       outputNodeRef.current = outputGain;
 
@@ -316,11 +318,14 @@ export const useAudioProcessing = (
     }
   }, []);
 
-  const updateVolume = useCallback((volume: number) => {
-    if (outputNodeRef.current) {
-      outputNodeRef.current.gain.value = volume;
-    }
-  }, []);
+  const updateVolume = useCallback(
+    (volume: number) => {
+      if (outputNodeRef.current) {
+        outputNodeRef.current.gain.value = volume * overallVolume;
+      }
+    },
+    [overallVolume]
+  );
 
   const cleanup = useCallback(() => {
     if (tuningOscillatorRef.current) {
@@ -375,6 +380,7 @@ export const useAudioProcessing = (
   return {
     initializeAudioContext,
     cleanup,
+    updateVolume,
   };
 };
 

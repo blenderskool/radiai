@@ -15,12 +15,12 @@ const fetchLiveData = async (): Promise<any> => {
   return data;
 };
 
-const getAudioProcessingConfig = (channelOffset: number) => {
+const getAudioProcessingConfig = (channelOffset: number, bass: number) => {
   return {
-    distortion: mapRange(channelOffset, [0, 1], [0, 0.8]), // 0-1, higher = more distortion (0.2 = subtle, 0.6 = heavy)
+    distortion: mapRange(channelOffset, [0, 1], [0.05, 0.8]), // 0-1, higher = more distortion (0.2 = subtle, 0.6 = heavy)
     noise: mapRange(channelOffset, [0.5, 3], [0, 0.015]), // 0-1, higher = more static noise (0.1 = clean, 0.4 = very noisy)
-    lowpass: 0.3, // 0-1, lower = more muffled sound (0.3 = very muffled, 0.8 = clear)
-    highpass: 0.1, // 0-1, higher = removes more bass (0.05 = full bass, 0.3 = thin)
+    lowpass: 1, // 0-1, lower = more muffled sound (0.3 = very muffled, 0.8 = clear)
+    highpass: mapRange(bass, [0, 1], [10, 0.1], false), // 0-1, higher = removes more bass (0.05 = full bass, 0.3 = thin)
     reverb: 0.1, // 0-1, higher = more echo/reverb (0.1 = dry, 0.5 = very echoey)
     tuningDrift: 0.6, // 0-1, higher = more frequency drift (0.05 = stable, 0.3 = wobbly)
     signalModulation: 0.8, // 0-1, higher = noise modulates more with signal (0.1 = constant, 0.5 = very dynamic)
@@ -56,7 +56,9 @@ const findNearestSong = (data: Record<string, any>, channel: number) => {
 };
 
 const useRadio = () => {
+  const overallVolume = useRadioControlsStore((state) => state.volume);
   const channel = useRadioControlsStore((state) => state.channel);
+  const bass = useRadioControlsStore((state) => state.bass);
 
   const [liveData, setLiveData] = useState<any>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -66,15 +68,18 @@ const useRadio = () => {
   const currentSongDataRef = useRef<any>(null);
   const [channelOffset, setChannelOffset] = useState(0);
 
-  const volume = useRadioControlsStore((state) => state.volume);
   const offsetVolume = clamp(
-    mapRange(channelOffset, [0, 2], [volume, 0], false),
+    mapRange(channelOffset, [0, 2], [overallVolume, 0], false),
     0,
-    volume
+    overallVolume
   );
-  const audioProcessingConfig = getAudioProcessingConfig(channelOffset);
 
-  const { initializeAudioContext } = useAudioProcessing(audioProcessingConfig);
+  const audioProcessingConfig = getAudioProcessingConfig(channelOffset, bass);
+
+  const { initializeAudioContext, updateVolume } = useAudioProcessing(
+    audioProcessingConfig,
+    overallVolume
+  );
 
   const play = async () => {
     await audioRef?.play();
@@ -200,9 +205,11 @@ const useRadio = () => {
 
   useEffect(() => {
     if (audioRef) {
-      audioRef.volume = offsetVolume;
+      audioRef.volume = offsetVolume * 0.75;
     }
-  }, [offsetVolume, audioRef]);
+    // Also update the audio processing volume
+    updateVolume(overallVolume);
+  }, [offsetVolume, overallVolume, audioRef, updateVolume]);
 
   return {
     liveData,
@@ -226,6 +233,8 @@ const useRadio = () => {
       if (audioRef) {
         audioRef.pause();
         setIsPlaying(false);
+        setLiveData(null);
+        audioContext?.suspend();
       }
     },
   };

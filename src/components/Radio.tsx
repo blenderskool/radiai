@@ -10,6 +10,62 @@ import { GLTF, OrbitControls } from 'three-stdlib';
 import { clamp } from 'three/src/math/MathUtils.js';
 import useSound from 'use-sound';
 
+function OnOffButton({
+  gltf,
+  onClick,
+}: {
+  gltf: GLTF & ObjectMap;
+  onClick: (play: boolean) => void;
+}) {
+  const isOn = useRadioControlsStore((state) => state.isOn);
+  const setIsOn = useRadioControlsStore((state) => state.setIsOn);
+  const [hovered, setHovered] = useState(false);
+  useCursor(hovered);
+  const mesh = useRef<THREE.Mesh>(null);
+  const [buttonPressed] = useSound('/sfx/button-pressed.mp3');
+  const [buttonReleased] = useSound('/sfx/button-released.mp3');
+
+  useEffect(() => {
+    if (!mesh.current) return;
+    if (isOn) {
+      animate([
+        [mesh.current.position, { z: 0.4 }, { duration: 0.12 }],
+        [mesh.current.position, { z: 0.42 }, { duration: 0.08 }],
+      ]);
+      buttonPressed();
+    } else {
+      animate([
+        [mesh.current.position, { z: 0.4 }, { duration: 0.08 }],
+        [mesh.current.position, { z: 0.472 }, { duration: 0.12 }],
+      ]);
+    }
+  }, [isOn]);
+
+  return (
+    <mesh
+      ref={mesh}
+      castShadow
+      receiveShadow
+      geometry={gltf.nodes.On_Off.geometry}
+      material={gltf.materials['Cream.001']}
+      position={[1.168, 0.299, 0.472]}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        setHovered(true);
+      }}
+      onPointerOut={() => setHovered(false)}
+      onClick={(e) => {
+        e.stopPropagation();
+        setIsOn(!isOn);
+        onClick(!isOn);
+        if (isOn) {
+          buttonReleased();
+        }
+      }}
+    />
+  );
+}
+
 function TunerButton({
   geometry,
   material,
@@ -329,8 +385,6 @@ export function Radio(props: any) {
           if (newVolume !== volume) {
             knobTick();
             setVolume(newVolume);
-            // Start playback when user adjusts volume
-            radio.play();
           }
         }}
       >
@@ -347,7 +401,7 @@ export function Radio(props: any) {
             receiveShadow
             geometry={nodes.Knob_1_Indicator.geometry}
             material={materials.Metal}
-            position={[-0.036, -0.005, 0.059]}
+            position={[-0.036, 0, 0.059]}
             rotation={[-Math.PI / 2, 0, 0]}
             scale={[0.007, 0.007, 0.004]}
           />
@@ -386,8 +440,6 @@ export function Radio(props: any) {
             setChannelKnob(newChannelKnob);
             const newChannel = clamp(channel + delta * 3, 87, 108);
             setChannel(newChannel);
-            // Start playback when user changes channel
-            radio.play();
           }
         }}
       >
@@ -404,7 +456,7 @@ export function Radio(props: any) {
             receiveShadow
             geometry={nodes.Knob_2_Indicator.geometry}
             material={materials.Metal}
-            position={[-0.036, -0.005, 0.059]}
+            position={[-0.036, 0, 0.059]}
             rotation={[-Math.PI / 2, 0, 0]}
             scale={[0.007, 0.007, 0.004]}
           />
@@ -442,8 +494,6 @@ export function Radio(props: any) {
           if (newBass !== bass) {
             knobTick();
             setBass(newBass);
-            // Start playback when user adjusts bass
-            radio.play();
           }
         }}
       >
@@ -460,7 +510,7 @@ export function Radio(props: any) {
             receiveShadow
             geometry={nodes.Knob_3_Indicator.geometry}
             material={materials.Metal}
-            position={[-0.036, -0.005, 0.059]}
+            position={[-0.036, 0, 0.059]}
             rotation={[-Math.PI / 2, 0, 0]}
             scale={[0.007, 0.007, 0.004]}
           />
@@ -474,7 +524,6 @@ export function Radio(props: any) {
           rotation={[Math.PI / 2, 0, 0]}
         />
       </Knob>
-
       <mesh
         castShadow
         receiveShadow
@@ -491,20 +540,7 @@ export function Radio(props: any) {
         rotation={[Math.PI / 2, 0, 0]}
         scale={0.111}
       />
-      <group position={[1.089, 1.864, -0.006]} scale={0.893}>
-        <mesh
-          castShadow
-          receiveShadow
-          geometry={nodes.Circle002.geometry}
-          material={materials.Metal}
-        />
-        <mesh
-          castShadow
-          receiveShadow
-          geometry={nodes.Circle002_1.geometry}
-          material={materials.Anisotropy}
-        />
-      </group>
+
       <mesh
         castShadow
         receiveShadow
@@ -513,24 +549,6 @@ export function Radio(props: any) {
         position={[1.089, 1.809, -0.006]}
         scale={0.097}
       />
-      <group
-        position={[1.56, 1.339, -0.033]}
-        rotation={[0, 0, -Math.PI / 2]}
-        scale={[1.556, 1.081, 1.556]}
-      >
-        <mesh
-          castShadow
-          receiveShadow
-          geometry={nodes.Circle002.geometry}
-          material={materials.Metal}
-        />
-        <mesh
-          castShadow
-          receiveShadow
-          geometry={nodes.Circle002_1.geometry}
-          material={materials.Anisotropy}
-        />
-      </group>
       <mesh
         castShadow
         receiveShadow
@@ -571,7 +589,6 @@ export function Radio(props: any) {
         position={[0.324, 0.867, 0.435]}
         onClick={() => {
           setChannel(channel === 88 ? 87 : 88);
-          radio.play();
         }}
         isActive={channel === 88}
       />
@@ -581,7 +598,6 @@ export function Radio(props: any) {
         position={[0.457, 0.867, 0.435]}
         onClick={() => {
           setChannel(channel === 92 ? 87 : 92);
-          radio.play();
         }}
         isActive={channel === 92}
       />
@@ -591,7 +607,6 @@ export function Radio(props: any) {
         position={[0.59, 0.867, 0.435]}
         onClick={() => {
           setChannel(channel === 94 ? 87 : 94);
-          radio.play();
         }}
         isActive={channel === 94}
       />
@@ -601,7 +616,6 @@ export function Radio(props: any) {
         position={[0.723, 0.867, 0.435]}
         onClick={() => {
           setChannel(channel === 96 ? 87 : 96);
-          radio.play();
         }}
         isActive={channel === 96}
       />
@@ -611,7 +625,6 @@ export function Radio(props: any) {
         position={[0.856, 0.867, 0.435]}
         onClick={() => {
           setChannel(channel === 102 ? 87 : 102);
-          radio.play();
         }}
         isActive={channel === 102}
       />
@@ -621,7 +634,6 @@ export function Radio(props: any) {
         position={[0.988, 0.867, 0.435]}
         onClick={() => {
           setChannel(channel === 104 ? 87 : 104);
-          radio.play();
         }}
         isActive={channel === 104}
       />
@@ -631,7 +643,6 @@ export function Radio(props: any) {
         position={[1.121, 0.867, 0.435]}
         onClick={() => {
           setChannel(channel === 107 ? 87 : 107);
-          radio.play();
         }}
         isActive={channel === 107}
       />
@@ -706,6 +717,69 @@ export function Radio(props: any) {
         material={materials.Wood}
         material-map-colorSpace={THREE.SRGBColorSpace}
         position={[-0.004, 0.938, 0]}
+      />
+      <mesh
+        castShadow
+        receiveShadow
+        geometry={nodes.Knob_4.geometry}
+        material={materials.Metal}
+        position={[1.089, 1.864, -0.006]}
+        scale={0.924}
+      />
+      <mesh
+        castShadow
+        receiveShadow
+        geometry={nodes.Knob_4_Front.geometry}
+        material={materials.Anisotropy}
+        position={[1.089, 1.864, -0.006]}
+        scale={0.924}
+      />
+      <mesh
+        castShadow
+        receiveShadow
+        geometry={nodes.Knob_5.geometry}
+        material={materials.Metal}
+        position={[1.557, 1.34, -0.034]}
+        rotation={[0, 0, -Math.PI / 2]}
+        scale={1.586}
+      />
+      <mesh
+        castShadow
+        receiveShadow
+        geometry={nodes.Knob_5_Front.geometry}
+        material={materials.Anisotropy}
+        position={[1.557, 1.34, -0.034]}
+        rotation={[0, 0, -Math.PI / 2]}
+        scale={1.586}
+      />
+      <mesh
+        castShadow
+        receiveShadow
+        geometry={nodes.Text007.geometry}
+        material={materials['Cream.001']}
+        position={[1.167, 0.377, 0.442]}
+        rotation={[Math.PI / 2, 0, 0]}
+        scale={0.042}
+      />
+      <mesh
+        castShadow
+        receiveShadow
+        geometry={nodes.Text009.geometry}
+        material={materials['Cream.001']}
+        position={[0.305, 0.267, 0.444]}
+        rotation={[Math.PI / 2, 0, 0]}
+        scale={0.039}
+      />
+
+      <OnOffButton
+        gltf={gltf}
+        onClick={(isOn) => {
+          if (isOn) {
+            radio.play();
+          } else {
+            radio.stop();
+          }
+        }}
       />
     </group>
   );
