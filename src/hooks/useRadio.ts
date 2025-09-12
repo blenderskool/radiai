@@ -124,6 +124,7 @@ const useRadio = () => {
     let audio = audioRef;
     if (!audio) {
       audio = new Audio();
+      audio.crossOrigin = 'anonymous';
       // Initialize audio processing
       try {
         const audioContext = await initializeAudioContext(audio);
@@ -180,16 +181,25 @@ const useRadio = () => {
       audioRef.currentTime = seekTime;
 
       try {
-        await play();
+        if (isPlaying) {
+          await play();
+        }
       } catch {
         // Failed due to autoplay policy
       }
     };
 
-    const onEnded = () => {
+    const onEnded = async () => {
       setIsPlaying(false);
       // Fetch next song when current song ends
       playNextSong(true);
+      try {
+        if (isPlaying) {
+          await play();
+        }
+      } catch {
+        // Failed due to autoplay policy
+      }
     };
 
     const onError = (e: any) => {
@@ -206,7 +216,7 @@ const useRadio = () => {
       audioRef.removeEventListener('ended', onEnded);
       audioRef.removeEventListener('error', onError);
     };
-  }, [audioRef, playNextSong, setIsPlaying]);
+  }, [audioRef, playNextSong, setIsPlaying, isPlaying]);
 
   // Initialize radio when channel changes
   useEffect(() => {
